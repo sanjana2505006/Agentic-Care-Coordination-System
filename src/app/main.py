@@ -49,26 +49,28 @@ def main():
             st.success(f"Dataset loaded: {len(processed_data)} records processed.")
             
             # Model Training / Prediction
+            st.divider()
+            st.subheader("2. Model Configuration")
+            
+            # Allow user to select target column if default not found
+            available_cols = processed_data.columns.tolist()
+            default_target = next((c for c in ['No-show', 'No_show'] if c in available_cols), available_cols[-1])
+            target_col = st.selectbox("Select Target Column (e.g., No-show or Outcome)", available_cols, index=available_cols.index(default_target))
+
             trainer = ModelTrainer()
             
             if st.button("Train/Update Model"):
-                with st.spinner("Training model..."):
-                    metrics = trainer.train(processed_data)
-                    st.write("Model trained with ROC-AUC:", round(metrics['roc_auc'], 3))
-                    st.json(metrics['report'])
+                with st.spinner(f"Training model on '{target_col}'..."):
+                    metrics = trainer.train(processed_data, target_col=target_col)
+                    st.success("Model trained successfully!")
+                    st.metric("ROC-AUC Score", round(metrics['roc_auc'], 3))
+                    with st.expander("Show Detailed Report"):
+                        st.json(metrics['report'])
             
             # Predict
             if trainer.load_model():
-                # We need to predict on the current data (excluding target if present)
-                features = processed_data.copy()
-                target_col = 'No-show' if 'No-show' in features.columns else ('No_show' if 'No_show' in features.columns else None)
-                
-                if target_col:
-                    y_true = features[target_col]
-                    features_only = features.drop(columns=[target_col])
-                else:
-                    y_true = None
-                    features_only = features
+                # Exclude the target column for prediction
+                features_only = processed_data.drop(columns=[target_col]) if target_col in processed_data.columns else processed_data
 
                 risks = trainer.predict(features_only)
                 processed_data['RiskScore'] = risks
@@ -76,7 +78,7 @@ def main():
                                                    bins=[0, 0.3, 0.7, 1.0], 
                                                    labels=['Low', 'Medium', 'High'])
                 
-                st.subheader("Predicted Risk Scores")
+                st.subheader("3. Predicted Risk Scores")
                 cols = st.columns(3)
                 cols[0].metric("Avg Risk Score", round(processed_data['RiskScore'].mean(), 2))
                 cols[1].metric("High Risk Patients", len(processed_data[processed_data['RiskLevel'] == 'High']))
@@ -109,6 +111,12 @@ def main():
             else:
                 st.warning("Please train the model first to enable risk prediction.")
 
+        except ValueError as ve:
+            if "Missing features" in str(ve):
+                st.error(f"📍 **Feature Mismatch**: {ve}")
+                st.warning("The current model was trained on a different dataset. Please click **'Train/Update Model'** above to adapt the system to your new data.")
+            else:
+                st.error(f"Value Error: {ve}")
         except Exception as e:
             st.error(f"Error: {e}")
             import traceback
