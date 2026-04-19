@@ -16,7 +16,7 @@ langchain
 langchain-openai
 langchain-community
 langchain-core
-langchain-textsplitters
+langchain-text-splitters
 
 # Vector Database (Optional)
 chromadb
