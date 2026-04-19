@@ -2,85 +2,119 @@ import streamlit as st
 import pandas as pd
 import os
 import sys
-import importlib.util
 from pathlib import Path
 
-# Resolve path to preprocessor.py relative to this file
-_current_dir = Path(__file__).resolve().parent          # src/app/
-_preprocessor_path = _current_dir.parent / "data" / "preprocessor.py"  # src/data/preprocessor.py
+# Add src to path to allow standard imports
+_current_dir = Path(__file__).resolve().parent
+_src_dir = _current_dir.parent
+if str(_src_dir) not in sys.path:
+    sys.path.append(str(_src_dir))
 
-# Load the module directly using importlib (works on Streamlit Cloud)
-_spec = importlib.util.spec_from_file_location("preprocessor", str(_preprocessor_path))
-_preprocessor = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_preprocessor)
-
-load_data = _preprocessor.load_data
-preprocess_data = _preprocessor.preprocess_data
+from data.preprocessor import load_data, preprocess_data
+from models.trainer import ModelTrainer
+from agent.coordinator import CareCoordinatorAgent
 
 # Page configuration
 st.set_page_config(
-    page_title="No-Show Prediction System",
+    page_title="Agentic Care Coordination System",
     page_icon="🏥",
     layout="wide"
 )
 
 def main():
     # Sidebar
-    st.sidebar.title("Navigation")
-    st.sidebar.info("Upload the appointment dataset to get started.")
+    st.sidebar.title("🏥 Care System")
+    st.sidebar.info("Upload patient data to predict no-show risks and generate care strategies.")
+    
+    api_key = st.sidebar.text_input("OpenAI API Key (optional for agent)", type="password")
+    if api_key:
+        os.environ["OPENAI_API_KEY"] = api_key
 
     # Main content
-    st.title("🏥 Clinical Appointment No-Show Prediction System")
+    st.title("🏥 Clinical Appointment No-Show Prediction & Coordination")
     st.markdown("""
-    Welcome to the **Agentic Care Coordination System**. 
-    This tool predicts patient no-show risks and generates intervention strategies.
+    This system uses **Machine Learning** to predict no-show risks and **Agentic AI** to coordinate care interventions.
     """)
 
     # File Uploader
-    st.header("1. Data Upload & Preprocessing")
+    st.header("1. Data Analysis & ML Risk Prediction")
     dataset_file = st.file_uploader("Upload your appointment data (CSV)", type=["csv"])
 
     if dataset_file is not None:
         try:
-            # Load data
-            raw_appointment_data = load_data(dataset_file)
+            # Load and Preprocess
+            raw_data = load_data(dataset_file)
+            processed_data = preprocess_data(raw_data)
             
-            # Preprocess
-            processed_data = preprocess_data(raw_appointment_data)
+            st.success(f"Dataset loaded: {len(processed_data)} records processed.")
             
-            # Success message
-            st.success(f"Successfully loaded and preprocessed dataset.")
+            # Model Training / Prediction
+            trainer = ModelTrainer()
             
-            records_col, features_col = st.columns(2)
-            with records_col:
-                st.metric("Total Records", processed_data.shape[0])
-            with features_col:
-                st.metric("Total Features", processed_data.shape[1])
-
-            # Data Preview
-            st.subheader("Preprocessed Data Preview")
-            st.dataframe(processed_data.head())
+            if st.button("Train/Update Model"):
+                with st.spinner("Training model..."):
+                    metrics = trainer.train(processed_data)
+                    st.write("Model trained with ROC-AUC:", round(metrics['roc_auc'], 3))
+                    st.json(metrics['report'])
             
-            # Show new feature
-            if 'LeadTime' in processed_data.columns:
-                st.info("✨ **Feature Engineering**: Calculated `LeadTime` (days between scheduling and appointment).")
-                st.bar_chart(processed_data['LeadTime'].value_counts().head(20))
-            
-            # Data Statistics
-            with st.expander("View Detailed Statistics"):
-                st.write(processed_data.describe())
-            
-            # Missing Values
-            if processed_data.isnull().sum().sum() > 0:
-                st.warning("⚠️ This dataset contains missing values.")
-                st.write(processed_data.isnull().sum()[processed_data.isnull().sum() > 0])
-            else:
-                st.info("✅ No missing values detected.")
+            # Predict
+            if trainer.load_model():
+                # We need to predict on the current data (excluding target if present)
+                features = processed_data.copy()
+                target_col = 'No-show' if 'No-show' in features.columns else ('No_show' if 'No_show' in features.columns else None)
                 
+                if target_col:
+                    y_true = features[target_col]
+                    features_only = features.drop(columns=[target_col])
+                else:
+                    y_true = None
+                    features_only = features
+
+                risks = trainer.predict(features_only)
+                processed_data['RiskScore'] = risks
+                processed_data['RiskLevel'] = pd.cut(processed_data['RiskScore'], 
+                                                   bins=[0, 0.3, 0.7, 1.0], 
+                                                   labels=['Low', 'Medium', 'High'])
+                
+                st.subheader("Predicted Risk Scores")
+                cols = st.columns(3)
+                cols[0].metric("Avg Risk Score", round(processed_data['RiskScore'].mean(), 2))
+                cols[1].metric("High Risk Patients", len(processed_data[processed_data['RiskLevel'] == 'High']))
+                cols[2].metric("Model Status", "Active")
+
+                st.dataframe(processed_data[['RiskScore', 'RiskLevel']].head(10).style.background_gradient(cmap='YlOrRd'))
+
+                # --- Milestone 2: Agentic Coordination ---
+                st.divider()
+                st.header("2. Agentic Care Coordination")
+                
+                high_risk_patients = processed_data[processed_data['RiskLevel'] == 'High']
+                
+                if not high_risk_patients.empty:
+                    st.write(f"Found {len(high_risk_patients)} high-risk cases. Select one to generate an intervention plan.")
+                    
+                    selected_idx = st.selectbox("Select Patient Index", high_risk_patients.index)
+                    patient_row = high_risk_patients.loc[selected_idx]
+                    
+                    if st.button("Generate Coordination Plan"):
+                        agent = CareCoordinatorAgent()
+                        with st.spinner("Agent is analyzing risk factors and guidelines..."):
+                            recommendation = agent.run(patient_row.to_dict(), patient_row['RiskScore'])
+                            
+                        st.subheader("📋 Intervention Strategy")
+                        st.markdown(recommendation)
+                else:
+                    st.info("No high-risk patients identified for agentic intervention.")
+
+            else:
+                st.warning("Please train the model first to enable risk prediction.")
+
         except Exception as e:
-            st.error(f"Error processing file: {e}")
+            st.error(f"Error: {e}")
+            import traceback
+            st.code(traceback.format_exc())
     else:
-        st.info("Please upload a CSV file to proceed.")
+        st.info("Please upload a CSV file to get started.")
 
 if __name__ == "__main__":
     main()

@@ -142,7 +142,78 @@ pip install -r requirements.txt
 streamlit run src/app/main.py
 ```
 
-The application will automatically launch in your default web browser. If it doesn't, you can manually open it by navigating to:
-```text
-http://localhost:8501
+## 🚀 How to Run the Project (Beginner's Guide)
+
+Follow these steps to get the system running on your local machine.
+
+### 1. Prerequisites
+- **Python 3.9 or higher** installed on your system.
+- An **OpenAI API Key** (optional, but recommended for the Agentic AI features).
+
+### 2. Setup the Environment
+Open your terminal and run the following:
+
+```bash
+# Clone the repository
+git clone https://github.com/sanjana2505006/Agentic-Care-Coordination-System.git
+cd Agentic-Care-Coordination-System
+
+# (Optional) Create a virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows use: venv\Scripts\activate
 ```
+
+### 3. Install Dependencies
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Run the Application
+Launch the Streamlit dashboard:
+```bash
+streamlit run src/app/main.py
+```
+
+The application will typically start on `http://localhost:8501`. If port 8501 is busy, it will automatically use the next available port (8502, 8503, etc.).
+
+### 5. Using the System
+1. **Upload Data**: Once the app opens, upload the sample file located at `data/raw/sample_appointments.csv`.
+2. **Train Model**: Click the **"Train/Update Model"** button to initialize the ML prediction engine.
+3. **Predict Risks**: The app will automatically calculate risk scores for all patients.
+4. **Agentic Coordination**: 
+   - Scroll down to the **"Agentic Care Coordination"** section.
+   - (Optional) Enter your OpenAI API Key in the sidebar for better reasoning.
+   - Select a high-risk patient and click **"Generate Coordination Plan"** to see the AI agent's recommendations.
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+**1. Port Already in Use**
+If you see "Port 8501 is not available", the app will automatically try the next available port. Check the terminal output for the actual URL.
+
+**2. LangChain Import Errors**
+If you encounter `ModuleNotFoundError: No module named 'langchain.docstore'`, ensure you have the latest version of langchain packages:
+```bash
+pip install --upgrade langchain langchain-core langchain-community
+```
+
+**3. Missing Dependencies**
+If you encounter import errors, reinstall all dependencies:
+```bash
+pip install -r requirements.txt --upgrade
+```
+
+**4. Model Training Issues**
+- Ensure your CSV file has the required columns: `ScheduledDay`, `AppointmentDay`, `No-show`
+- The system automatically handles both `No-show` and `No_show` column names
+- If the model fails to train, check that your data has both shows and no-shows
+
+### System Requirements
+- **Python**: 3.9 or higher
+- **Memory**: Minimum 4GB RAM recommended
+- **Storage**: 500MB free space for dependencies and model files
+
+---
